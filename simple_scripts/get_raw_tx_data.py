@@ -1,20 +1,25 @@
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from decimal import Decimal
-import base64
 
 # Configuration
 RPC_USER = "your_rpc_user"
-RPC_PASSWORD = "your_rpc_password"
+RPC_PASSWORD = "your_rpc_pass"
 RPC_HOST = "127.0.0.1"
-RPC_PORT = 8332
+RPC_PORT = 9335
 
-# Connect to the bellscoin node
+# Connect to the Dogecoin node
 rpc_connection = AuthServiceProxy(f"http://{RPC_USER}:{RPC_PASSWORD}@{RPC_HOST}:{RPC_PORT}")
 
 # Transaction ID
-txid = "e0689b6dcf006acf0aa008160bae0a14fd31f5cc672853ae1f8f7ddc5f947761"
+txid = "40ebc57e7f4ee455ad2bcaab92171e96c19713399f885b363b242cc4f5548d33"
 
-ORDINAL_SIGNIFIER = "6582895"
+def get_previous_tx_output(txid, vout):
+    try:
+        prev_tx = rpc_connection.getrawtransaction(txid, True)
+        return prev_tx['vout'][vout]
+    except JSONRPCException as e:
+        print(f"An error occurred: {e}")
+        return None
 
 def decode_script(script_hex):
     try:
@@ -24,43 +29,52 @@ def decode_script(script_hex):
         print(f"An error occurred: {e}")
         return "N/A"
 
-def hex_to_base64(hex_string):
-    return base64.b64encode(bytes.fromhex(hex_string)).decode('utf-8')
-
-def extract_ordinal_data(asm):
-    parts = asm.split()
-    if len(parts) < 8 or parts[4] != ORDINAL_SIGNIFIER:
-        return None, None
-
-    mime_type = bytes.fromhex(parts[6]).decode('utf-8')
-    data = parts[8]
-
-    return mime_type, data
-
-def print_transaction_data(txid):
+def save_transaction_inputs_to_file(txid):
     try:
+        # Fetch the raw transaction data in decoded format
         transaction = rpc_connection.getrawtransaction(txid, True)
 
-        for vin_index, vin in enumerate(transaction['vin']):
-            print(f"\nInput {vin_index}:")
-            if 'txinwitness' in vin:
-                print("Witness data:")
-                for witness_index, witness_item in enumerate(vin['txinwitness']):
-                    print(f"  Witness {witness_index}: {witness_item}")
-                    asm = decode_script(witness_item)
-                    print(f"  Decoded ASM: {asm}")
-                    mime_type, data = extract_ordinal_data(asm)
-                    if mime_type and data:
-                        print(f"  MIME Type: {mime_type}")
-                        print(f"  Ordinal Data (Base64): {hex_to_base64(data)}")
-            else:
-                print("  No witness data for this input")
+        # Prepare the content to be saved
+        file_content = f"Transaction ID: {txid}\n"
+        file_content += "Inputs:\n"
 
-        if all('txinwitness' not in vin for vin in transaction['vin']):
-            print("\nNo witness data found in this transaction.")
+        vins = transaction['vin']
+        for index, vin in enumerate(vins):
+            prev_txid = vin['txid']
+            prev_vout = vin['vout']
+            prev_output = get_previous_tx_output(prev_txid, prev_vout)
+
+            if prev_output:
+                value = prev_output['value']
+                script_pub_key = prev_output['scriptPubKey']
+                addresses = script_pub_key.get('addresses', ["N/A"])
+                script_sig_hex = vin.get('scriptSig', {}).get('hex', '')
+                script_sig_asm = decode_script(script_sig_hex)
+
+                file_content += f"  Input {index + 1}:\n"
+                file_content += f"    Previous Transaction ID: {prev_txid}\n"
+                file_content += f"    Output Index: {prev_vout}\n"
+                file_content += f"    Value: {Decimal(value)} DOGE\n"
+                file_content += f"    Addresses: {', '.join(addresses)}\n"
+                file_content += f"    ScriptSig (Hex): {script_sig_hex}\n"
+                file_content += f"    ScriptSig (ASM): {script_sig_asm}\n"
+            else:
+                file_content += f"  Input {index + 1}:\n"
+                file_content += f"    Previous Transaction ID: {prev_txid}\n"
+                file_content += f"    Output Index: {prev_vout}\n"
+                file_content += "    Value: N/A (error fetching data)\n"
+                file_content += "    Addresses: N/A\n"
+                file_content += "    ScriptSig (Hex): N/A\n"
+                file_content += "    ScriptSig (ASM): N/A\n"
+
+        # Save the input details to a file named <txid>.txt
+        with open(f"{txid}.txt", "w") as file:
+            file.write(file_content)
+
+        print(f"Transaction inputs saved to {txid}.txt")
 
     except JSONRPCException as e:
         print(f"An error occurred: {e}")
 
-# Print the transaction data to the console
-print_transaction_data(txid)
+# Save the transaction inputs to a file
+save_transaction_inputs_to_file(txid)
