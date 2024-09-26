@@ -1,0 +1,2 @@
+"MimeType": "image/png",
+"EncryptedData": ""
