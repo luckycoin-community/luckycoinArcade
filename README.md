@@ -1,5 +1,5 @@
 
-# Dogecoin Arcade Project
+# Luckycoin Arcade Project
 
 This project involves a comprehensive system for managing and interacting with Dogecoin ordinals, including tools for collection management, content handling, and blockchain interaction. Below is a detailed overview of the project structure and components.
 
